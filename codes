@@ -1,0 +1,137 @@
+# Download zip file
+setwd("~/Coursera-SwiftKey (1)/final/en_US")
+blogs <- readLines("en_US.blogs.txt", encoding = "UTF-8", skipNul = TRUE)
+news <- readLines("en_US.news.txt", encoding = "UTF-8", skipNul = TRUE)
+twitter <- readLines("en_US.twitter.txt", encoding = "UTF-8", skipNul = TRUE)
+
+library(stringi)
+library(NLP)
+library(tm)
+library(SnowballC)
+library(RWeka)
+library(ggplot2)
+
+# Subsetting
+## twitter
+twitcon <- file("~/Coursera-SwiftKey (1)/final/en_US/en_US.twitter.txt")
+subtwitter <- readLines(twitcon,1500)
+save(subtwitter,file="~/Coursera-SwiftKey (1)/final/en_US/subtwitter.txt")
+close(twitcon)
+
+## blog
+blogcon <- file("~/Coursera-SwiftKey (1)/final/en_US/en_US.blogs.txt")
+subblogs <- readLines(twitcon,1500)
+save(subblogs,file="~/Coursera-SwiftKey (1)/final/en_US/subblogs.txt")
+close(blogcon)
+
+## news
+newscon <- file("~/Coursera-SwiftKey (1)/final/en_US/en_US.news.txt")
+subnews <- readLines(newscon,1500)
+save(subnews,file="~/Coursera-SwiftKey (1)/final/en_US/subnews.txt")
+close(newscon)
+
+# Tokenization
+all <- c(subtwitter,subblogs,subnews)
+corpobj <- VCorpus(VectorSource(all))
+
+corpobj <- tm_map(corpobj, removeNumbers)
+corpobj <- tm_map(corpobj, removePunctuation)
+profanewords <- readLines("https://www.cs.cmu.edu/~biglou/resources/bad-words.txt",
+                           encoding = "en")
+corpobj <- tm_map(corpobj, removeWords,profanewords)
+corpobj <- tm_map(corpobj, removeWords, stopwords("english"))
+corpobj <- tm_map(corpobj, stripWhitespace)
+corpobj <- tm_map(corpobj, stemDocument)
+
+token1 <- function (x){NGramTokenizer(x,Weka_control(min=1,max=1))}
+token2 <- function (x){NGramTokenizer(x,Weka_control(min=2,max=2))}
+token3 <- function (x){NGramTokenizer(x,Weka_control(min=3,max=3))}
+
+options(mc.core=1)
+uni_tdm <- DocumentTermMatrix(corpobj,control = list(tokenize=token1))
+bi_tdm <- DocumentTermMatrix(corpobj,control = list(tokenize=token2))
+tri_tdm <- DocumentTermMatrix(corpobj,control = list(tokenize=token3))
+
+## Summary Statistics
+path <- "~/Coursera-SwiftKey (1)/final/en_US/"
+docs <- c("blogs", "news", "twitter")
+filenames <- sapply(docs, (function(f) { paste0(path, "en_US.", f, ".txt") }))
+# read lines of each file
+data <- sapply(filenames, readLines)
+
+# calculate statistics for each file
+char_counts <- sapply(data, (function(c) { sum(nchar(c)) }))
+word_counts <- sapply(data, (function(c) { sum(stri_stats_latex(c)[["Words"]]) }))
+line_counts <- sapply(data, length)
+mean_line_chars <- char_counts / line_counts
+mean_line_words <- word_counts / line_counts
+mean_word_length <- char_counts / word_counts
+
+# generate data frame
+file_stats <- data.frame(document = docs,
+                         char.count = char_counts, 
+                         word.count = word_counts, 
+                         line.count = line_counts,
+                         mean.line.chars = mean_line_chars,
+                         mean.line.words = mean_line_words, 
+                         mean.word.length = mean_word_length,
+                         row.names = NULL)
+
+library(knitr)
+# generate column names for table
+file_stats_table_col_names <- c("Document",
+                                "Character Count",
+                                "Word Count",
+                                "Line Count",
+                                "Mean Line Length (Characters)",
+                                "Mean Line Length (Words)",
+                                "Mean Word Length")
+
+# generate table
+kable(file_stats, 
+      caption = "Table 1: Summary Statistics Calculated for Each US English Corpus File", 
+      format.args = list(big.mark=","), 
+      col.names = file_stats_table_col_names)
+##
+
+# Character Distribution Boxplot
+par( mfrow = c( 1, 3 ) )
+limit <- c(0,400)
+blog_dist <- nchar(blogs)
+boxplot(blog_dist, ylim = limit, main = "Blogs", ylab = "Number of Characters")
+news_dist <- nchar(news)
+boxplot(news_dist, ylim = limit, main = "News", ylab = "Number of Characters")
+twitter_dist <- nchar(twitter)
+boxplot(twitter_dist, ylim = limit, main = "Twitter", ylab = "Number of Characters")
+# Reset to default
+par( mfrow = c( 1, 1 ) )
+##
+
+# Plotting Top 10 words
+freq1 <- sort(colSums(as.matrix(uni_tdm)), decreasing=TRUE)
+wordcount1 <- data.frame(word=names(freq1), freq=freq1)
+wordcount1top10 <- wordcount1[1:10,]
+
+freq2 <- sort(colSums(as.matrix(bi_tdm)), decreasing=TRUE)
+wordcount2 <- data.frame(word=names(freq2), freq=freq2)
+wordcount2top10 <- wordcount2[1:10,]
+
+freq3 <- sort(colSums(as.matrix(tri_tdm)), decreasing=TRUE)
+wordcount3 <- data.frame(word=names(freq3), freq=freq3)
+wordcount3top10 <- wordcount3[1:10,]
+
+plot1 <- ggplot(wordcount1top10, aes(x=reorder(word,-freq),y=freq))+geom_bar(stat="identity",fill="#E6A2C5")+
+          theme(axis.text.x = element_text(angle = 30, hjust=1))+
+          labs(title="Most Frequent Words",x="Words",y="Frequency")
+
+plot2 <- ggplot(wordcount2top10, aes(x=reorder(word,-freq),y=freq))+geom_bar(stat="identity",fill="#7496D2")+
+  theme(axis.text.x = element_text(angle = 30, hjust = 1))+
+  labs(title="Most Frequent Bi-grams",x="Words",y="Frequency")
+
+plot3 <- ggplot(wordcount3top10, aes(x=reorder(word,-freq),y=freq))+geom_bar(stat="identity",fill="#C7CEF6")+
+  theme(axis.text.x = element_text(angle = 30, hjust = 1))+
+  labs(title="Most Frequent Tri-grams",x="Words",y="Frequency")
+
+plot1
+plot2
+plot3
